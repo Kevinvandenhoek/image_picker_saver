@@ -12,15 +12,15 @@ import android.content.pm.ResolveInfo;
 import android.media.MediaScannerConnection;
 import android.net.Uri;
 import android.provider.MediaStore;
+import android.support.annotation.VisibleForTesting;
+import android.support.v4.app.ActivityCompat;
+import android.support.v4.content.FileProvider;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.List;
 import java.util.UUID;
 
-import androidx.annotation.VisibleForTesting;
-import androidx.core.app.ActivityCompat;
-import androidx.core.content.FileProvider;
 import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.PluginRegistry;
@@ -67,6 +67,7 @@ import io.flutter.plugin.common.PluginRegistry;
 public class ImagePickerDelegate
         implements PluginRegistry.ActivityResultListener,
         PluginRegistry.RequestPermissionsResultListener {
+
     @VisibleForTesting
     static final int REQUEST_CODE_CHOOSE_IMAGE_FROM_GALLERY = 2342;
     @VisibleForTesting
@@ -83,9 +84,9 @@ public class ImagePickerDelegate
     static final int REQUEST_EXTERNAL_VIDEO_STORAGE_PERMISSION = 2354;
     @VisibleForTesting
     static final int REQUEST_CAMERA_VIDEO_PERMISSION = 2355;
-
     @VisibleForTesting
-    final String fileProviderName;
+    static final int REQUEST_EXTERNAL_IMAGE_STORAGE_SAVE_PERMISSION = 2356;
+    @VisibleForTesting final String fileProviderName;
 
     private final Activity activity;
     private final File externalFilesDirectory;
@@ -96,22 +97,26 @@ public class ImagePickerDelegate
     private final FileUtils fileUtils;
 
     interface PermissionManager {
+
         boolean isPermissionGranted(String permissionName);
 
         void askForPermission(String permissionName, int requestCode);
     }
 
     interface IntentResolver {
+
         boolean resolveActivity(Intent intent);
     }
 
     interface FileUriResolver {
+
         Uri resolveFileProviderUriForFile(String fileProviderName, File imageFile);
 
         void getFullImagePath(Uri imageUri, OnPathReadyListener listener);
     }
 
     interface OnPathReadyListener {
+
         void onPathReady(String path);
     }
 
@@ -275,21 +280,25 @@ public class ImagePickerDelegate
 
         if (!permissionManager.isPermissionGranted(Manifest.permission.WRITE_EXTERNAL_STORAGE)) {
             permissionManager.askForPermission(
-                    Manifest.permission.WRITE_EXTERNAL_STORAGE, REQUEST_EXTERNAL_IMAGE_STORAGE_PERMISSION);
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE, REQUEST_EXTERNAL_IMAGE_STORAGE_SAVE_PERMISSION);
             return;
         }
+        saveImageFile();
+    }
+
+    private void saveImageFile() {
         byte[] fileData = methodCall.argument("fileData");
 
         //Bitmap bitmap = BitmapFactory.decodeByteArray(fileData, 0, fileData.length);
 
-        String title = methodCall.argument("title") == null? "Camera": methodCall.argument("title").toString();
-
-        String desctiption = methodCall.argument("description") == null? "123": methodCall.argument("description").toString();
-
-        String filePath = CapturePhotoUtils.insertImage(activity.getContentResolver(), fileData, title, desctiption);
+        String filePath = null;
+        try {
+            filePath = CapturePhotoUtils.insertImage(activity.getContentResolver(), fileData, "Camera", "123");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
 
         finishWithSuccess(filePath);
-
     }
 
     private void launchPickImageFromGalleryIntent() {
@@ -393,6 +402,11 @@ public class ImagePickerDelegate
             case REQUEST_CAMERA_VIDEO_PERMISSION:
                 if (permissionGranted) {
                     launchTakeVideoWithCameraIntent();
+                }
+                break;
+            case REQUEST_EXTERNAL_IMAGE_STORAGE_SAVE_PERMISSION:
+                if (permissionGranted) {
+                    saveImageFile();
                 }
                 break;
             default:
